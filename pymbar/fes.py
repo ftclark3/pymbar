@@ -1322,10 +1322,12 @@ class FES:
         histogram_data = self.histogram_data
         histogram_datas = self.histogram_datas
 
-        bins = histogram_data["bins"]
-        dims = histogram_data["dims"]
+        bins = histogram_data["bins"] # these are the bin edges, enclosing len(bins)-1 bins
+        dims = histogram_data["dims"] # dimensionality of the CV space
+        assert dims == x.shape[1]
         bin_order = histogram_data["bin_order"]
-        nbins = len(bin_order)
+        breakpoint()
+        nbins = len(bin_order) # number of nonempty bins, including the "bins" going from the edges of the histogram to +/- inf
 
         # figure out which bins the values are in.
         if dims == 1:
@@ -1349,11 +1351,15 @@ class FES:
                     # -1 and nbins_per_dim are out of range
                     fes_ref_grid[d] = np.digitize(fes_reference[d], bins[d]) - 1
                     if fes_ref_grid[d] == -1 or fes_ref_grid[d] == len(bins[d]):
-                        raise ParameterError(
-                            "Specified reference point coordinate {:f} in dim {:d} grid point is out of the FES region [{:f},{:f}]".format(
-                                fes_ref_grid[d], d, np.min(bins[d]), np.max(bins[d])
-                            )
-                        )
+                        #raise ParameterError(
+                        #    "Specified reference point coordinate {:f} in dim {:d} grid point is out of the FES region [{:f},{:f}]".format(
+                        #        fes_ref_grid[d], d, np.min(bins[d]), np.max(bins[d])
+                        #    )
+                        #)
+                        pass # ^^^ the FES region actually covers the entire, possibly infinite, CV space
+                             #     due to the consideration of the "bins" beyond the edges of histogram_data['bins'] (see bin_order),
+                             #     so we should accept any given reference point in the CV space with a finite free energy;
+                             #     we can confirm elsewhere that the reference point's bin doesn't have 0 histogram counts/infinite free energy
             else:
                 raise ParameterError("Specified reference point for FES not given")
 
@@ -1403,6 +1409,7 @@ class FES:
 
                 # Compute asymptotic covariance matrix using specified
                 # method.
+                breakpoint()
                 Theta_ij = self.mbar._computeAsymptoticCovarianceMatrix(W_nk, N_k)
 
                 # Compute uncertainties with respect to difference in free energy
@@ -1484,7 +1491,7 @@ class FES:
                 # Report uncertainties in all free energy differences as
                 # well.
                 diag = Theta_ij.diagonal()
-                dii = diag[K, K + nbins]  # appears broken?  Not used?
+                dii = diag[K, K + nbins]  # appears broken?  Not used? # <-- i don't understand this comment
                 d2f_ij = dii + dii.transpose() - 2 * Theta_ij[K : K + nbins, K : K + nbins]
 
                 # unsquare uncertainties
