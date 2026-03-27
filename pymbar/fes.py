@@ -251,7 +251,11 @@ class FES:
 
             Input dictionary with the following keys:
 
-                 bin_edges: list of ndim np.ndarray, each array shaped ndum+1
+                 bin_edges: list of length D (= x.shape[1]), where each element 
+                            is a numpy.ndarray of shape (NUM_EDGES,) where NUM_EDGES
+                            can be different for different dimensions;
+                            alternatively, may be a single numpy.ndarray of shape (NUM_EDGES,)
+                            in the D=1 case
                      The bin edges. Compatible with `bin_edges` output of np.histogram.
 
                  kde_parameters
@@ -503,12 +507,11 @@ class FES:
         # We will just recalculate the populations of each bin.
 
         histogram_parameters = self.histogram_parameters
-        bins = histogram_parameters["bin_edges"]
-        dims = len(bins)
-
+        bins = histogram_parameters["bin_edges"] # see generate_fes docstring
+        dims = len(bins) # number of dimensions
         histogram_data = {}
         histogram_data["dims"] = dims  # store the dimensionality for checking later.
-        histogram_data["bins"] = bins  # save for other functions.
+        histogram_data["bins"] = bins  # save for other functions. (they might not have access to histogram_parameters)
 
         # create the bins from the data.
         # it's a 1D array, instead of a Nx1 array.  Reshape.
@@ -516,12 +519,14 @@ class FES:
         if len(np.shape(x_n)) == 1:
             x_n = x_n.reshape(-1, 1)
 
+        # each row of bin_n is a different sample, each column a dimension,
+        # and the value of each element is the bin index (discretized coordinate)
+        # of the corresponding sample on the corresponding axis
         bin_n = np.zeros(x_n.shape, int)
-        bin_length = np.zeros(dims, int)
+        bin_length = np.zeros(dims, int) # a 1D array, since dims is an int
         for d in range(dims):
-            bin_length[d] = len(bins[d])
-            # bins returns 0 as out of bin.  We want to use -1 as out
-            # of bin instead.
+            bin_length[d] = len(bins[d]) # number of bin EDGES along axis d
+            # TODO: fix bug relating to binning of out-of-bounds data described by Lnaden in #511
             bin_n[:, d] = np.digitize(x_n[:, d], bins[d]) - 1
 
         histogram_data["bin_n"] = bin_n  # bin counts in each bin
@@ -529,12 +534,18 @@ class FES:
         # number each of the bins with samples with an integer
         # Assign each sample this integer label (in addition to the tuple label)
 
+        # when generating the histogram, 
+        # we should use exactly the number of samples as was used for MBAR (self.N).
+        # but for a given bootstrap resampling, some configurations will be repeated 
+        # and others will not be used.
+        # the resampling is performed before calling this function (see _generate_fes_histogram docstring)
         nonzero_bins = list()
-        bin_label = {}
-        sample_label = np.zeros(self.N, int)
-
+        bin_label = {} # key is multidimensional bin index, value is corresponding index for a flattened array
+        sample_label = np.zeros(self.N, int) # position is configuration index, value is flattened bin index
         for n in range(self.N):
+            # bin() is a python builtin function, maybe should use a different variable name?
             bin = tuple(bin_n[n])  # which bin (labeled N-D) sample n is in
+            # TODO: fix inconsistent treatment of out-of-bounds data, noted by Lnaden in #511
             if np.any(bin_n[n] < 0):  # this sample is out of grid
                 sample_label[n] = -1
             else:
@@ -543,29 +554,24 @@ class FES:
                 sample_label[n] = int(
                     np.sum([bin_n[n][d] * bin_length[d] ** d for d in range(dims)])
                 )
-            if bin not in nonzero_bins:
-                nonzero_bins.append(bin)
-                bin_label[bin] = sample_label[n]
+            if bin not in nonzero_bins: # note that sample_label[n]==-1, meaning out of bounds, is treated as a nonzero bin
+                nonzero_bins.append(bin) # add multidimensional bin index to nonzero_bins list
+                bin_label[bin] = sample_label[n] # -1 or a single integer representing the multidimensional bin index
         histogram_data["nonzero_bins"] = nonzero_bins
         histogram_data["sample_label"] = sample_label
 
-        # problem with bins above:
-        #
-        # all over bootstraps, not all nonzero bins will occur, as in some bootstraps,
-        # some labels won't appear.
-        # However, if they appear in the list of nonzero bins, they will have the same labels.
-        # that may be OK, since we are only really interested in
-        # uncertainties for the ones that have nonzero samples in the original list.
-
-        # Need to come up with an order for the labels for all bootstraps, so free energies
-        # are always assigned.
+        # bin_order and bin_label will be used to identify nonzero bins.
+        # they are set only on the first run through and never for bootstrap
+        # resampling because we want to calculate uncertainty for all bins
+        # that are populated by the original sample, without dropping bins
+        # that might be unpopulated in certain bootstrap resampling runs
 
         if b == 0:
             bin_order = {}
             i = 0
-            for bv in bin_label.values():
-                if bv not in bin_order:
-                    bin_order[bv] = i
+            for bv in bin_label.values(): # loop over integer labels of multidimensional bin indices (including -1 for out of bounds data)
+                if bv not in bin_order: # if bin not yet represented in bin_order
+                    bin_order[bv] = i # assign a 0-indexed integer label to the bin
                     i += 1
             histogram_data["bin_order"] = bin_order
             histogram_data["bin_label"] = bin_label
@@ -573,12 +579,12 @@ class FES:
             bin_order = self.histogram_data["bin_order"]
 
         # Compute the free energies for the histogram bins
-        # with samples. We cannot calculate free energies
-        # for bins w/o samples.
+        # Free energy is infinite for bins w/o samples, which can happen in the case of bootstrapping
 
-        f_i = np.zeros(len(bin_label), np.float64)
+        # TODO: should use bin_order here instead of bin_label (see #573)
+        f_i = np.zeros(len(bin_label), np.float64) # indices of populated bins are stored in bin_labels.keys()
 
-        for i, label in enumerate(bin_label.values()):
+        for i, label in enumerate(bin_label.values()): # TODO: should use bin_order here instead of bin_label (see #573)
             # Get linear n-indices of samples that fall in this bin.
             indices = np.where(sample_label == label)
 
