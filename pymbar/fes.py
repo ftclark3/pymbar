@@ -1346,7 +1346,6 @@ class FES:
         dims = histogram_data["dims"] # dimensionality of the CV space
         assert dims == x.shape[1]
         bin_order = histogram_data["bin_order"]
-        breakpoint()
         nbins = len(bin_order) # number of nonempty bins, including the "bins" going from the edges of the histogram to +/- inf
 
         # figure out which bins the values are in.
@@ -1429,7 +1428,6 @@ class FES:
 
                 # Compute asymptotic covariance matrix using specified
                 # method.
-                breakpoint()
                 Theta_ij = self.mbar._computeAsymptoticCovarianceMatrix(W_nk, N_k)
 
                 # Compute uncertainties with respect to difference in free energy
