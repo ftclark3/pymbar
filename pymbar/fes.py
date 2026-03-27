@@ -581,21 +581,35 @@ class FES:
         # Compute the free energies for the histogram bins
         # Free energy is infinite for bins w/o samples, which can happen in the case of bootstrapping
 
-        # TODO: should use bin_order here instead of bin_label (see #573)
-        f_i = np.zeros(len(bin_label), np.float64) # indices of populated bins are stored in bin_labels.keys()
+        f_i = np.zeros(len(bin_order), np.float64) # indices of bins occupied by the original data (not necessarily by this bootstrap) are stored in bin_order.keys()
 
-        for i, label in enumerate(bin_label.values()): # TODO: should use bin_order here instead of bin_label (see #573)
+        for i, label in enumerate(bin_order): # loops over bin_order KEYS, which are related to the VALUES in bin_label
             # Get linear n-indices of samples that fall in this bin.
             indices = np.where(sample_label == label)
 
             # Sanity check.
             if len(indices) == 0:
-                raise DataError(
-                    f"WARNING: bin {i} has no samples -- all bins must have at least one sample."
-                )
+                if b==0: # working with original data, not bootstrapping
+                    raise AssertionError(
+                        f"""Bin {i} has no samples. 
+                            This should never happen (see #511) when x_n is the original data,
+                            which it is now, since b==0."""
+                        )
+                else:
+                    raise DataError(
+                        f"""Bin {i} has no samples. 
+                            We might have by chance created a bootstrap that occupies fewer bins than the original data.
+                            The free energy for these unoccupied bins will be infinite, and so the average and standard deviation
+                            of free energies over all bootstraps for these bins will be undefined.
+                            This Exception could be changed to a Warning without breaking anything internally."""
+                        )
 
             # Compute dimensionless free energy of occupying state i.
-            f_i[bin_order[label]] = -logsumexp(log_w_nb[indices])
+            weights = log_w_nb[indices]
+            if weights.size == 0: # no hits found ==> infinite free energy
+                f_i[bin_order[label]] = np.inf
+            else:
+                f_i[bin_order[label]] = -logsumexp(log_w_nb[indices])
 
         # store the free energies for this bin
         histogram_data["f"] = f_i
