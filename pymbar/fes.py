@@ -1344,7 +1344,7 @@ class FES:
         dims = histogram_data["dims"] # dimensionality of the CV space
         assert dims == x.shape[1]
         bin_order = histogram_data["bin_order"]
-        nbins = len(bin_order) # number of nonempty bins, including the "bins" going from the edges of the histogram to +/- inf
+        nbins = len(bin_order) # number of nonempty bins (based on simulation data, not the points x where the user wants to evaluate the FES)
 
         # figure out which bins the values are in.
         if dims == 1:
@@ -1485,10 +1485,13 @@ class FES:
                        in a given dimension are grouped into a single huge "bin"
                        that, given its size, is probably not a good approximation 
                        for the true FES at all points within itself.""")
-
-            bin_label = histogram_data["bin_label"][tuple(l)]
-            fx_vals[i] = f_i[bin_order[bin_label]]
-            dfx_vals[i] = df_i[bin_order[bin_label]]
+            try:
+                bin_label = histogram_data["bin_label"][tuple(l)]
+                fx_vals[i] = f_i[bin_order[bin_label]]
+                dfx_vals[i] = df_i[bin_order[bin_label]]
+            except KeyError: # tuple(l) not a key of histogram_data["bin_label"] because bin is empty
+                fx_vals[i] = np.inf
+                dfx_vals[i] = np.nan
 
         # Return dimensionless free energy and uncertainty.
         result_vals["f_i"] = fx_vals
