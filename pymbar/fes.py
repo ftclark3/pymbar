@@ -1483,7 +1483,7 @@ class FES:
                        resulting in limited data outside the bin_edges, and
                        (2) all MBAR samples above (below) the upper (lower) bin edge
                        in a given dimension are grouped into a single huge "bin"
-                       that, given its size, is probably not be a good approximation 
+                       that, given its size, is probably not a good approximation 
                        for the true FES at all points within itself.""")
 
             bin_label = histogram_data["bin_label"][tuple(l)]
