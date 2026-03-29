@@ -525,9 +525,11 @@ class FES:
         bin_n = np.zeros(x_n.shape, int)
         bin_length = np.zeros(dims, int) # a 1D array, since dims is an int
         for d in range(dims):
-            bin_length[d] = len(bins[d]) # number of bin EDGES along axis d
-            # TODO: fix bug relating to binning of out-of-bounds data described by Lnaden in #511
-            bin_n[:, d] = np.digitize(x_n[:, d], bins[d]) - 1
+            # len(bins[d]) is the number of bin EDGES along axis d
+            # add 1 to get number of bins including the "bins" 
+            # with boundaries [bin_edges[-1], inf) and (-inf, bin_edges[0])
+            bin_length[d] = len(bins[d])+1 
+            bin_n[:, d] = np.digitize(x_n[:, d], bins[d]) # we need to get rid of the -1 shift here following our out of bounds mapping fix because it would break our indexing when constructing sample_label below
 
         histogram_data["bin_n"] = bin_n  # bin counts in each bin
 
@@ -545,18 +547,14 @@ class FES:
         for n in range(self.N):
             # bin() is a python builtin function, maybe should use a different variable name?
             bin = tuple(bin_n[n])  # which bin (labeled N-D) sample n is in
-            # TODO: fix inconsistent treatment of out-of-bounds data, noted by Lnaden in #511
-            if np.any(bin_n[n] < 0):  # this sample is out of grid
-                sample_label[n] = -1
-            else:
-                # how do we label the bins? if N-dimensional:
-                # bins[0] + bins[1]*bin_length[1]**1 + bins[2]*bin_length[2]**2
-                sample_label[n] = int(
-                    np.sum([bin_n[n][d] * bin_length[d] ** d for d in range(dims)])
-                )
+            # how do we label the bins? if N-dimensional:
+            # bins[0] + bins[1]*bin_length[1]**1 + bins[2]*bin_length[2]**2
+            sample_label[n] = int(
+                np.sum([bin_n[n][d] * bin_length[d] ** d for d in range(dims)])
+            )
             if bin not in nonzero_bins: # note that sample_label[n]==-1, meaning out of bounds, is treated as a nonzero bin
                 nonzero_bins.append(bin) # add multidimensional bin index to nonzero_bins list
-                bin_label[bin] = sample_label[n] # -1 or a single integer representing the multidimensional bin index
+                bin_label[bin] = sample_label[n] # a single integer representing the multidimensional bin index
         histogram_data["nonzero_bins"] = nonzero_bins
         histogram_data["sample_label"] = sample_label
 
@@ -569,7 +567,7 @@ class FES:
         if b == 0:
             bin_order = {}
             i = 0
-            for bv in bin_label.values(): # loop over integer labels of multidimensional bin indices (including -1 for out of bounds data)
+            for bv in bin_label.values(): # loop over integer labels of multidimensional bin indices
                 if bv not in bin_order: # if bin not yet represented in bin_order
                     bin_order[bv] = i # assign a 0-indexed integer label to the bin
                     i += 1
@@ -1342,7 +1340,7 @@ class FES:
         histogram_data = self.histogram_data
         histogram_datas = self.histogram_datas
 
-        bins = histogram_data["bins"] # these are the bin edges, enclosing len(bins)-1 bins
+        bins = histogram_data["bins"] # these are the bin edges, enclosing len(bins)-1 bins, but there is also a "bin" beyond these edges on each side that goes to infinity 
         dims = histogram_data["dims"] # dimensionality of the CV space
         assert dims == x.shape[1]
         bin_order = histogram_data["bin_order"]
@@ -1351,13 +1349,11 @@ class FES:
         # figure out which bins the values are in.
         if dims == 1:
             # what gridpoint does each x fall into?
-            # -1 and nbinsperdim are out of range
-            loc_indices = np.digitize(x, bins[0]) - 1
+            loc_indices = np.digitize(x, bins[0]) 
         else:
             loc_indices = np.zeros([len(x), dims], dtype=int)
             for d in range(dims):
-                # -1 and nbinsperdim are out of range
-                loc_indices[:, d] = np.digitize(x[:, d], bins[d]) - 1
+                loc_indices[:, d] = np.digitize(x[:, d], bins[d]) 
 
         # figure out which grid point the fes_reference is at
         if reference_point == "from-specified":
@@ -1367,18 +1363,7 @@ class FES:
                     fes_reference = [fes_reference]
                 fes_ref_grid = np.zeros([dims], dtype=int)
                 for d in range(dims):
-                    # -1 and nbins_per_dim are out of range
-                    fes_ref_grid[d] = np.digitize(fes_reference[d], bins[d]) - 1
-                    if fes_ref_grid[d] == -1 or fes_ref_grid[d] == len(bins[d]):
-                        #raise ParameterError(
-                        #    "Specified reference point coordinate {:f} in dim {:d} grid point is out of the FES region [{:f},{:f}]".format(
-                        #        fes_ref_grid[d], d, np.min(bins[d]), np.max(bins[d])
-                        #    )
-                        #)
-                        pass # ^^^ the FES region actually covers the entire, possibly infinite, CV space
-                             #     due to the consideration of the "bins" beyond the edges of histogram_data['bins'] (see bin_order),
-                             #     so we should accept any given reference point in the CV space with a finite free energy;
-                             #     we can confirm elsewhere that the reference point's bin doesn't have 0 histogram counts/infinite free energy
+                    fes_ref_grid[d] = np.digitize(fes_reference[d], bins[d]) 
             else:
                 raise ParameterError("Specified reference point for FES not given")
 
@@ -1478,40 +1463,32 @@ class FES:
         # figure out how many grid points in each direction
         maxp = np.zeros(dims, int)
         for d in range(dims):
-            maxp[d] = len(bins[d])
+            # remember, bins[d] refers to the number of bin edges in dimension d
+            maxp[d] = len(bins[d])+1 # add 1 to get the number of bins, including one in each direction beyond the last edge
 
         for i, l in enumerate(loc_indices):
             # Must be a way to list comprehend this?
-            if np.any(l < 0):  # out of index below
+            # pairwise comparison of bin index and number of bins in each dimension
+            assert not np.any(l > maxp ), "shouldn't be possible to have this bin index assigned" 
+            if np.any(l == 0) or np.any(l == maxp):
                 logger.warning(
-                   f"""Found a point in the array of coordinates 
+                    f"""Found a point in the array of coordinates 
                        where the free energy surface is to be evaluated 
                        (the array x that was passed to get_fes())
-                       that falls below your bin_edges in at least one dimension.
+                       that falls outside your bin_edges in at least one dimension.
                        The coordinates of this point are {x[i]} (row {i} of array x),
-                       while the bin_edges passed to generate_fes() were {bins} """)
-                fx_vals[i] = np.nan
-                dfx_vals[i] = np.nan
-                continue
-            if np.any(l >= maxp - 1):  # out of index above
-                logger.warning(
-                   f"""Found a point in the array of coordinates 
-                       where the free energy surface is to be evaluated 
-                       (the array x that was passed to get_fes())
-                       that falls above your bin_edges in at least one dimension.
-                       The coordinates of this point are {x[i]} (row {i} of array x),
-                       while the bin_edges passed to generate_fes() were {bins} """)
-                fx_vals[i] = np.nan
-                dfx_vals[i] = np.nan
-                continue
+                       while the bin_edges passed to generate_fes() were {bins}.
+                       The free energy estimate at this point is probably unreliable because
+                       (1) you probably set your bin_edges to enclose most or all of your samples,
+                       resulting in limited data outside the bin_edges, and
+                       (2) all MBAR samples above (below) the upper (lower) bin edge
+                       in a given dimension are grouped into a single huge "bin"
+                       that, given its size, is probably not be a good approximation 
+                       for the true FES at all points within itself.""")
 
             bin_label = histogram_data["bin_label"][tuple(l)]
-            if bin_label >= 0:
-                fx_vals[i] = f_i[bin_order[bin_label]]
-                dfx_vals[i] = df_i[bin_order[bin_label]]
-            else:
-                fx_vals[i] = np.nan
-                dfx_vals[i] = np.nan
+            fx_vals[i] = f_i[bin_order[bin_label]]
+            dfx_vals[i] = df_i[bin_order[bin_label]]
 
         # Return dimensionless free energy and uncertainty.
         result_vals["f_i"] = fx_vals
