@@ -1373,7 +1373,15 @@ class FES:
                 j = histogram_data["f"].argmin()
             elif reference_point == "from-specified":
                 # find the label of this bin
-                ref_bin_label = histogram_data["bin_label"][tuple(fes_ref_grid)]
+                try:
+                    ref_bin_label = histogram_data["bin_label"][tuple(fes_ref_grid)]
+                except KeyError:
+                    raise ParameterError(
+                        f"""Your specified reference point, fes_reference={fes_reference},
+                            is in an empty bin and therefore is treated as having infinite
+                            free energy, so it cannot be used as a reference.
+                            histogram_data['bin_edges'] was {bins}
+                         """)
                 # then find the invariant free energy index of this bin
                 j = bin_order[ref_bin_label]
             elif reference_point == "all-differences":
