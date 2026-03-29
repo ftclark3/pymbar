@@ -1483,10 +1483,24 @@ class FES:
         for i, l in enumerate(loc_indices):
             # Must be a way to list comprehend this?
             if np.any(l < 0):  # out of index below
+                logger.warning(
+                   f"""Found a point in the array of coordinates 
+                       where the free energy surface is to be evaluated 
+                       (the array x that was passed to get_fes())
+                       that falls below your bin_edges in at least one dimension.
+                       The coordinates of this point are {x[i]} (row {i} of array x),
+                       while the bin_edges passed to generate_fes() were {bins} """)
                 fx_vals[i] = np.nan
                 dfx_vals[i] = np.nan
                 continue
             if np.any(l >= maxp - 1):  # out of index above
+                logger.warning(
+                   f"""Found a point in the array of coordinates 
+                       where the free energy surface is to be evaluated 
+                       (the array x that was passed to get_fes())
+                       that falls above your bin_edges in at least one dimension.
+                       The coordinates of this point are {x[i]} (row {i} of array x),
+                       while the bin_edges passed to generate_fes() were {bins} """)
                 fx_vals[i] = np.nan
                 dfx_vals[i] = np.nan
                 continue
