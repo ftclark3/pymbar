@@ -1433,6 +1433,15 @@ class FES:
                     )
 
             elif uncertainty_method == "bootstrap":
+                logger.warning("""
+                Bootstrapped histogram uncertainty calculation first shifts
+                each bootstrapped FES so that the free energy at the reference point
+                (which is at the same location x_ref for the original data and all bootstraps) 
+                is equal to 0. Then, it computes the standard deviation
+                of the free energies of the set of bootstraps at each FES point.
+                Generally, this standard deviation will be different for different
+                choices of the reference point.
+                """)
                 fall = np.zeros([len(histogram_data["f"]), n_bootstraps])
                 for b in range(n_bootstraps):
                     h = histogram_datas[b]  # just to make this shorter
